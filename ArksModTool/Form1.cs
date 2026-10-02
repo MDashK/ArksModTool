@@ -25,10 +25,33 @@ namespace ArksModTool
 {
     public partial class Form1 : Form
     {
-        public static readonly Version PSO2VERSION = new Version(4, 0801, 0, 0);
-        public static readonly uint PCOMMDATA = 0x04011E00;
-        public static readonly uint ORIGINAL_CRC = 0x50CBF287;
-        public static readonly uint PATCHED_CRC = 0xCA4B8958;
+        // A versao montada vem do AssemblyInfo (1.3.0.13 -> "1.3" + a 13a letra,
+        // "m").  Este sufixo marca a variante.
+        public const string VERSION_SUFFIX = "_SL";
+
+        public static readonly Version PSO2VERSION = new Version(6, 1202, 0, 4);
+
+        // Estes dois sao OFFSETS a contar de 0x00400000 e nao enderecos.  O
+        // Addresses.txt dos descritores guarda VAs ($code = 066D9500,
+        // $data = 066DA200) e o gerador subtrai o base ao escrever o .dat; aqui
+        // e' o pso2Base que volta a ser somado, por isso o que entra e' o VA
+        // menos 400000.  Com o VA inteiro a soma caia em 06ADA200, que e' uma
+        // das seccoes do ASProtect.
+        public static readonly uint PCODECAVE = 0x062D9500;      // VA 0x066D9500
+        public static readonly uint PCOMMDATA = 0x062DA200;      // VA 0x066DA200
+
+        // O CRC nao e' verificado pelo GameGuard nesta versao, por isso o
+        // remendo escreve de volta o mesmo valor: fica so' a servir de teste de
+        // versao no CheckCrc.
+        public static readonly uint ORIGINAL_CRC = 0xB1A026AB;
+        public static readonly uint PATCHED_CRC = 0xB1A026AB;
+
+        // Base do kernel32 dentro do processo do JOGO, nao do nosso.
+        // Fica aqui porque o ApplyCommDataPatch so' recebe o handle.
+        private uint m_gameKernel32 = 0;
+
+        // Nomes lidos do patches.off; ver CarregaPatchesDesligados.
+        private HashSet<string> m_skippedPatches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private int m_pso2PID = 0;
         private IntPtr m_pso2HWND = IntPtr.Zero;
@@ -163,16 +186,154 @@ namespace ArksModTool
             m_lastKeystate = new KeyboardState();
         }
 
+        /// <summary>
+        /// Desliga na interface o que esta versao do alvo ainda nao sabe fazer.
+        /// Os sitios destes remendos nao foram reapontados para a 6.1202.4, e os
+        /// descritores correspondentes estao fora do build -- sem isto, os
+        /// controlos ficavam a aceitar cliques e a nao produzir efeito nenhum,
+        /// que e' pior do que estarem cinzentos.
+        /// </summary>
+        /// <summary>
+        /// Le o patches.off ao lado do executavel: um nome de remendo por linha,
+        /// linhas a comecar por # sao comentarios, e o nome ALL salta todos os
+        /// remendos de jogo (nao os do canal de comunicacao).
+        ///
+        /// Serve para isolar um remendo que esteja a rebentar o jogo sem ter de
+        /// voltar a compilar: desliga-se tudo, confirma-se que o jogo aguenta, e
+        /// volta-se a ligar por grupos ate' o culpado aparecer.  Sem o ficheiro
+        /// nao se salta nada, que e' o comportamento normal.
+        /// </summary>
+        private void CarregaPatchesDesligados()
+        {
+            m_skippedPatches.Clear();
+
+            string path = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath),
+                                       "patches.off");
+            if (!File.Exists(path))
+                return;
+
+            try
+            {
+                foreach (string line in File.ReadAllLines(path))
+                {
+                    string name = line.Trim();
+                    if (name.Length == 0 || name.StartsWith("#"))
+                        continue;
+
+                    m_skippedPatches.Add(name);
+                }
+            }
+            catch (Exception error)
+            {
+                Log("Could not read patches.off:");
+                Log("  " + error.Message);
+                return;
+            }
+
+            if (m_skippedPatches.Count == 0)
+                return;
+
+            Log("patches.off is disabling:");
+            foreach (string name in m_skippedPatches)
+                Log("  " + name);
+            Log("-------------------------------");
+        }
+
+        private bool Skipped(string name)
+        {
+            if (!m_skippedPatches.Contains(name))
+                return false;
+
+            Log("Skipped: " + name);
+            return true;
+        }
+
+        private void DisableUnsupportedFeatures()
+        {
+            // Estas ficam cinzentas: o remendo existe mas o sitio ainda nao foi
+            // reapontado para esta versao do cliente.
+            var cinzentas = new[]
+            {
+                chkHideScreenNotifications,
+                chkHideEmergencyCodes,
+                chkCam1Customize,
+                chkCam2Customize,
+            };
+
+            foreach (var controlo in cinzentas)
+            {
+                controlo.Checked = false;
+                controlo.Enabled = false;
+            }
+
+            // Estas saem mesmo da lista.  O video de introducao nunca chegou a
+            // ser reapontado, e as duas de actualizacao nao fazem sentido nesta
+            // variante -- ficam desligadas por omissao e sem forma de as ligar.
+            Program.Settings.AutomaticUpdates = false;
+            Program.Settings.PromptOnUpdate = false;
+            chkAutomaticUpdates.Checked = false;
+            chkPromptOnUpdate.Checked = false;
+
+            RemoveOption(chkDisableIntro);
+            RemoveOption(chkAutomaticUpdates);
+            RemoveOption(chkPromptOnUpdate);
+
+            Log("Not yet retargeted for this");
+            Log("client version, disabled:");
+            Log("  screen notifications,");
+            Log("  emergency codes,");
+            Log("  camera overrides.");
+            Log("-------------------------------");
+        }
+
+        /// <summary>
+        /// Tira um controlo da pagina e sobe os que ficavam por baixo, para nao
+        /// deixar um buraco no meio da lista.
+        ///
+        /// O deslocamento sai da distancia ao vizinho mais proximo por baixo, em
+        /// vez de ser um numero fixo, para continuar certo se o espacamento da
+        /// janela mudar.  Removido um controlo, o seguinte passa a ocupar o
+        /// lugar dele e a conta repete-se sozinha.
+        ///
+        /// O controlo nao e' destruido -- continua ligado aos settings, e o que
+        /// deixa de haver e' maneira de lhe mexer.
+        /// </summary>
+        private void RemoveOption(Control control)
+        {
+            Control parent = control.Parent;
+            if (parent == null)
+                return;
+
+            int top = control.Top;
+            int shift = 0;
+
+            foreach (Control sibling in parent.Controls)
+                if (sibling.Top > top && (shift == 0 || sibling.Top - top < shift))
+                    shift = sibling.Top - top;
+
+            parent.Controls.Remove(control);
+
+            if (shift == 0)
+                return;
+
+            foreach (Control sibling in parent.Controls)
+                if (sibling.Top > top)
+                    sibling.Top -= shift;
+        }
+
         private void Form1_Load(object sender, EventArgs e)
         {
             var letters = Enumerable.Range((int)'a', 26).Select(x => new string((char)x, 1));
             var letter = letters.ElementAtOrDefault(Program.Version.Revision - 1);
-            lblVersion.Text = string.Format("v{0}{1}", Program.Version.ToString(2), letter);
+            lblVersion.Text = string.Format("v{0}{1}{2}", Program.Version.ToString(2), letter, VERSION_SUFFIX);
 
             Log("Arks Mod Tool");
-            Log("Version : {0}{1}", Program.Version.ToString(2), letter);
+            Log("Version : {0}{1}{2}", Program.Version.ToString(2), letter, VERSION_SUFFIX);
             Log("Target  : pso2.exe v{0}.{1:D4}.{2}", PSO2VERSION.Major, PSO2VERSION.Minor, PSO2VERSION.Revision);
             Log("-------------------------------");
+
+            DisableUnsupportedFeatures();
+            CarregaPatchesDesligados();
 
             string[] args = Environment.GetCommandLineArgs();
             string updateResult = args.SkipWhile(x => x != "-on_update").ElementAtOrDefault(1);
@@ -180,8 +341,9 @@ namespace ArksModTool
                 Log("Arks Mod Tool has been updated.");
             if (updateResult == "failure")
                 Log("WARNING: The last update attempt failed.");
-            else
-                tmrAppUpdate.Start();
+
+            // O tmrAppUpdate nao arranca: esta variante nao se auto-actualiza, e
+            // as duas opcoes que o governavam sairam da interface.
 
             AllocationType allocType = AllocationType.Reserve | AllocationType.Commit;
             m_commBuffer = Kernel32Imports.VirtualAlloc(m_commBufferLocation, m_commBufferSize, allocType, MemoryProtection.ReadWrite);
@@ -282,7 +444,18 @@ namespace ArksModTool
 
         private void btnInfoMenu_Click(object sender, EventArgs e)
         {
-            contextMenuStrip2.Show(btnInfoMenu, new Point(btnInfoMenu.Width, btnInfoMenu.Height), ToolStripDropDownDirection.BelowLeft);
+            // Era um menu com "Open Project Page" e "Check For Updates"; agora
+            // abre a pagina directamente, que e' a unica das duas que interessa
+            // nesta variante.
+            try
+            {
+                Process.Start(Updater.PROJECT_PAGE);
+            }
+            catch (Exception error)
+            {
+                Log("Could not open " + Updater.PROJECT_PAGE + ":");
+                Log("  " + error.Message);
+            }
         }
 
         private void notifyIcon1_MouseClick(object sender, MouseEventArgs e)
@@ -534,15 +707,92 @@ namespace ArksModTool
             bool isOkay = true;
 
             isOkay = isOkay && handle != IntPtr.Zero;
-            isOkay = isOkay && CheckCrc(handle);
-            isOkay = isOkay && ApplyCrcPatch(handle);
-            isOkay = isOkay && ApplyCommPatch(handle);
-            isOkay = isOkay && ApplyGamePatches(handle);
+            isOkay = isOkay && Step("CheckCrc", CheckCrc(handle));
+            isOkay = isOkay && Step("FindGameKernel32", FindGameKernel32(process));
+            isOkay = isOkay && Step("ApplyCrcPatch", ApplyCrcPatch(handle));
+
+            // Tem de vir antes do ApplyCommPatch -- e' o codigo injectado que
+            // precisa de escrever no $data, e assim que o CommMainHook entra o
+            // jogo pode chama-lo.  Avisa mas nao chumba: ver o UnprotectCaves.
+            if (isOkay)
+                UnprotectCaves(handle);
+
+            isOkay = isOkay && Step("ApplyCommPatch", ApplyCommPatch(handle));
+            isOkay = isOkay && Step("ApplyGamePatches", ApplyGamePatches(handle));
 
             Kernel32Imports.CloseHandle(handle);
             PrivilegeHelper.RestorePrivilege(privilege);
 
             return isOkay;
+        }
+
+        /// <summary>
+        /// Le a base do kernel32 dentro do processo do jogo.
+        ///
+        /// Este cliente nao guarda essa base em sitio nenhum da sua imagem, por
+        /// isso o $pKernel32 passou a apontar para o nosso bloco de comunicacao,
+        /// que e' preenchido aqui.  A versao anterior usava o GetModuleHandleA
+        /// sobre o NOSSO processo, o que so' da o mesmo valor por acaso -- e so'
+        /// enquanto a tool for de 32 bits, porque a ASLR fixa a base por
+        /// arranque e por bitness.  Compilada em x64 devolvia um endereco de 64
+        /// bits e o ToInt32 estourava.  Lido do alvo, o valor esta' certo seja
+        /// qual for a configuracao.
+        /// </summary>
+        private bool FindGameKernel32(Process process)
+        {
+            m_gameKernel32 = 0;
+
+            try
+            {
+                foreach (ProcessModule module in process.Modules)
+                {
+                    if (!string.Equals(Path.GetFileName(module.ModuleName), "kernel32.dll",
+                                       StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // Visto de um processo de 64 bits, a listagem de um alvo WOW64
+                    // pode trazer tambem o kernel32 de 64 bits, com base acima dos
+                    // 4 GB.  Esse nao serve: continua a procurar em vez de desistir.
+                    long baseAddress = module.BaseAddress.ToInt64();
+                    if (baseAddress <= 0 || baseAddress >= 0x100000000L)
+                        continue;
+
+                    m_gameKernel32 = (uint)baseAddress;
+                    return true;
+                }
+            }
+            catch (Exception error)
+            {
+                Log("Could not read the game's modules:");
+                Log("  " + error.Message);
+            }
+
+            if (IntPtr.Size != 4)
+            {
+                Log("This build is 64-bit. The game is");
+                Log("32-bit, so build the x86 configuration.");
+                SetStatus("Wrong Platform", Color.Red);
+            }
+            else
+            {
+                Log("Could not locate kernel32 in pso2.exe.");
+                SetStatus("Initialization Error", Color.Red);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Diz no log qual o passo que falhou.  Varios deles acabam a chamar o
+        /// LogLastWin32Error com o nome da API, e duas chamadas diferentes podiam
+        /// registar "VirtualProtectEx" sem se distinguirem uma da outra.
+        /// </summary>
+        private bool Step(string name, bool result)
+        {
+            if (!result)
+                Log("Step failed: " + name);
+
+            return result;
         }
 
         private unsafe bool CheckCrc(IntPtr handle)
@@ -587,16 +837,69 @@ namespace ArksModTool
             return true;
         }
 
+        /// <summary>
+        /// As duas caves caem na seccao principal, que o cabecalho marca
+        /// EXEC|READ e nao WRITE.  O cliente vem empacotado com ASProtect e na
+        /// pratica as paginas costumam acabar RWX depois de desempacotar, mas
+        /// nada o garante -- e o CommMain injectado escreve no $data.  Pedir
+        /// PAGE_EXECUTE_READWRITE aqui nao custa nada se ja' la' estiver e evita
+        /// uma falha de pagina se nao estiver.
+        /// </summary>
+        private void UnprotectCaves(IntPtr handle)
+        {
+            Unprotect(handle, "$code", PCODECAVE, 0x700);
+            Unprotect(handle, "$data", PCOMMDATA, 0x100);
+        }
+
+        private void Unprotect(IntPtr handle, string name, uint offset, int byteCount)
+        {
+            uint pso2Base = 0x00400000u;
+            IntPtr address = new IntPtr(pso2Base + offset);
+            Protection oldProtection;
+
+            if (Kernel32Imports.VirtualProtectEx(handle, address, byteCount,
+                                                 Protection.PAGE_EXECUTE_READWRITE,
+                                                 out oldProtection))
+                return;
+
+            // Nao e' fatal.  Os remendos entram por WriteProcessMemory, que trata
+            // da proteccao sozinho; isto so' serve para o codigo injectado poder
+            // escrever no $data por sua conta.  Se as paginas ja' estiverem RWX --
+            // o que e' o habitual depois de o ASProtect desempacotar -- nem faz
+            // falta.  Fica o aviso, mas nao se chumba a sessao por causa dele.
+            Log("Could not unprotect " + name + " (not fatal):");
+            LogLastWin32Error("  VirtualProtectEx");
+        }
+
         private bool ApplyCommPatch(IntPtr handle)
         {
             bool isOkay = true;
 
-            isOkay = isOkay && ApplyCommDataPatch(handle);
-            isOkay = isOkay && ApplyGamePatch(handle, Resources.CommInit);
-            isOkay = isOkay && ApplyGamePatch(handle, Resources.CommMain);
-            isOkay = isOkay && ApplyGamePatch(handle, Resources.CommMainHook);
+            // Os blobs trazem o endereco ja' resolvido pelo gerador, por isso isto
+            // diz de uma olhadela se os .dat sao os desta versao ou os antigos que
+            // ficaram em Resources\Patch Files.  Em 6.1202.4 espera-se
+            // CommMain e CommMainHook em 047B0240, CommInit em 066D9580.
+            Log("CommInit     @ 0x{0:X8}", PatchAddress(Resources.CommInit));
+            Log("CommMain     @ 0x{0:X8}", PatchAddress(Resources.CommMain));
+            Log("CommMainHook @ 0x{0:X8}", PatchAddress(Resources.CommMainHook));
+
+            isOkay = isOkay && Step("ApplyCommDataPatch", ApplyCommDataPatch(handle));
+            isOkay = isOkay && (Skipped("CommInit")
+                                || Step("CommInit", ApplyGamePatch(handle, Resources.CommInit)));
+            isOkay = isOkay && (Skipped("CommMain")
+                                || Step("CommMain", ApplyGamePatch(handle, Resources.CommMain)));
+            isOkay = isOkay && (Skipped("CommMainHook")
+                                || Step("CommMainHook", ApplyGamePatch(handle, Resources.CommMainHook)));
 
             return isOkay;
+        }
+
+        /// <summary>
+        /// O endereco alvo que o PatchFileGenerator gravou no inicio do blob.
+        /// </summary>
+        private static uint PatchAddress(byte[] patchData)
+        {
+            return 0x00400000u + BitConverter.ToUInt32(patchData, 0);
         }
 
         private unsafe bool ApplyCommDataPatch(IntPtr handle)
@@ -621,6 +924,33 @@ namespace ArksModTool
             Marshal.WriteInt32(dCommData, 0x18, pCommFunctions.ToInt32());
 
             if (!Kernel32Imports.WriteProcessMemory(handle, pCommData, dCommData, 0x20, IntPtr.Zero))
+                return LogLastWin32Error("WriteProcessMemory") == 0;
+
+            return WriteKernel32Base(handle);
+        }
+
+        /// <summary>
+        /// Poe a base do kernel32 do jogo onde o $pKernel32 aponta.
+        ///
+        /// Este cliente nao guarda essa base em sitio nenhum da sua imagem, por
+        /// isso o $pKernel32 passou a apontar para o nosso lado do $data, que o
+        /// CommInit le' com "mov eax, ds:[$pKernel32]" antes de cada
+        /// GetProcAddress.
+        ///
+        /// Fica em $data+0x20 e nao em +0x1C: o bloco de comunicacao vai de 0x00
+        /// a 0x1F e o +0x1C ja' tem dono -- o CommInit le'-o com
+        /// "mov edi,[esi+1C]" e usa-o como ponteiro para o nome do pipe, que
+        /// depois passa ao CreateFileA.  Escrever la' a base punha os dois a
+        /// disputar o mesmo slot.  De +0x20 a +0x3F nao ha' nada, e as modFlags
+        /// so' comecam em +0x40.
+        /// </summary>
+        private unsafe bool WriteKernel32Base(IntPtr handle)
+        {
+            uint pso2Base = 0x00400000u;
+            uint value = m_gameKernel32;
+            IntPtr pKernel32 = new IntPtr(pso2Base + PCOMMDATA + 0x20);
+
+            if (!Kernel32Imports.WriteProcessMemory(handle, pKernel32, (IntPtr)(&value), 4, IntPtr.Zero))
                 return LogLastWin32Error("WriteProcessMemory") == 0;
 
             return true;
@@ -676,41 +1006,58 @@ namespace ArksModTool
             return pCommFunctions;
         }
 
+        /// <summary>
+        /// Aplica os remendos do jogo.  A versao antiga encadeava
+        /// os "isOkay" uns nos outros com curto-circuito, o que fazia com que a
+        /// primeira falha calasse todas as seguintes sem dizer qual foi -- e a
+        /// primeira da lista era justamente uma das que deixaram de resolver.
+        /// Agora todos sao tentados e o que falhar aparece pelo nome no log.
+        ///
+        /// Ficaram de fora, por o sitio ainda nao estar reapontado para a
+        /// 6.1202.4 (ver AMTInjections\Descriptor Files\_unresolved\README.txt):
+        /// ToggleIntroVideo, UIHideScreenNotifications, UIHideECodes(+Hook),
+        /// DisableECodeMapChange e todo o grupo da camara.
+        /// </summary>
         private bool ApplyGamePatches(IntPtr handle)
         {
+            var patches = new[]
+            {
+                new KeyValuePair<string, byte[]>("ToggleNearCulling",       Resources.ToggleNearCulling),
+                new KeyValuePair<string, byte[]>("ToggleFarCulling",        Resources.ToggleFarCulling),
+                new KeyValuePair<string, byte[]>("ToggleFarCullingTerrain", Resources.ToggleFarCullingTerrain),
+                new KeyValuePair<string, byte[]>("ToggleUpdateCulling",     Resources.ToggleUpdateCulling),
+                new KeyValuePair<string, byte[]>("ToggleLOD",               Resources.ToggleLOD),
+                new KeyValuePair<string, byte[]>("ToggleLODHook",           Resources.ToggleLODHook),
+
+                new KeyValuePair<string, byte[]>("UIHideMenus",             Resources.UIHideMenus),
+                new KeyValuePair<string, byte[]>("UIHideSubpalette",        Resources.UIHideSubpalette),
+
+                new KeyValuePair<string, byte[]>("InputScaleNormal",        Resources.InputScaleNormal),
+                new KeyValuePair<string, byte[]>("InputScaleAuto",          Resources.InputScaleAuto),
+
+                new KeyValuePair<string, byte[]>("DisableAutoShowLog",      Resources.DisableAutoShowLog),
+
+                new KeyValuePair<string, byte[]>("ColorAdjustments",        Resources.ColorAdjustments),
+                new KeyValuePair<string, byte[]>("ColorAdjustmentsHook",    Resources.ColorAdjustmentsHook),
+            };
+
             bool isOkay = true;
+            bool skipAll = m_skippedPatches.Contains("ALL");
 
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.ToggleIntroVideo);
+            if (skipAll)
+                Log("Skipped: ALL game patches");
 
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.ToggleNearCulling);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.ToggleFarCulling);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.ToggleFarCullingTerrain);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.ToggleUpdateCulling);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.ToggleLOD);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.ToggleLODHook);
+            foreach (var patch in patches)
+            {
+                if (skipAll || Skipped(patch.Key))
+                    continue;
 
+                if (ApplyGamePatch(handle, patch.Value))
+                    continue;
 
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.UIHideMenus);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.UIHideSubpalette);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.UIHideScreenNotifications);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.UIHideECodes);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.UIHideECodesHook);
-
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.InputScaleNormal);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.InputScaleAuto);
-
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.DisableAutoShowLog);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.DisableECodeMapChange);
-
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.Camera1Override);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.Camera2Override);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.Camera2TransOverride);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.CameraLandingOverride);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.CameraControlMain);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.CameraControlMainHook);
-
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.ColorAdjustments);
-            isOkay &= isOkay && ApplyGamePatch(handle, Resources.ColorAdjustmentsHook);
+                Log("Patch failed: {0} @ 0x{1:X8}", patch.Key, PatchAddress(patch.Value));
+                isOkay = false;
+            }
 
             return isOkay;
         }

@@ -40,11 +40,11 @@ b3:	call NO_SYMBOL
 	jbe d0
 	mov ecx, [edx+ecx*4]
 	mov eax, [esi+50]
-	mov [ecx+50], eax
-	mov eax, [esi+54]
 	mov [ecx+54], eax
-	mov eax, [esi+58]
+	mov eax, [esi+54]
 	mov [ecx+58], eax
+	mov eax, [esi+58]
+	mov [ecx+5C], eax
 	movaps xmm0, [esi+60]
 	movaps [ecx+60], xmm0
 d0:	add esp, 4

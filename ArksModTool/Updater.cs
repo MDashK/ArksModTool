@@ -13,7 +13,7 @@ namespace ArksModTool
 {
     static class Updater
     {
-        public static readonly string PROJECT_PAGE = "http://www.pso-world.com/forums/showthread.php?p=3287385#post3287385";
+        public static readonly string PROJECT_PAGE = "https://github.com/MDashK/ArksModTool";
         public static readonly string DEFAULT_SERVER = @"https://raw.githubusercontent.com/HardLight620/ArksModTool/master/Distribution/";
         public static readonly string DEFAULT_SERVER_BUILD = DEFAULT_SERVER + (IntPtr.Size == 8 ? "x64" : "x86");
 

@@ -11,6 +11,11 @@ internal static class Kernel32Imports
     [DllImport("kernel32.dll")]
     internal static extern uint GetLastError();
 
+    // A system DLL is randomised once per boot and every process maps it at the same
+    // base, so the handle this process gets for kernel32 is the one pso2 has too.
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
+    internal static extern IntPtr GetModuleHandleA(string moduleName);
+
 
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern IntPtr OpenProcess(ProcessAccessFlags processAccess, bool inheritHandle, int processId);

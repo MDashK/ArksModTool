@@ -55,6 +55,6 @@ d6:	test edx, edx
 	nopx 0B
 UIHideSubpalette_End:
 
-d7 = UIHideSubpalette+1B0
+d7 = UIHideSubpalette+1C1
 
 END

@@ -1,11 +1,24 @@
 ﻿==
 === Arks Mod Tool
-=== Version 1.3l
+=== Version 1.3m_SL
 ==
 
 A mod utility tool to provide various
 client-side game adjustments for
 Phantasy Star Online 2.
+
+-
+
+MDashK: Retargeted to version v6.1202.4
+for usage with the Starlight release.
+
+Not yet retargeted for this client version,
+disabled:
+  screen notifications,
+  emergency codes,
+  camera overrides.
+
+-
 
 This project is strictly the work of a
 fan and is not affiliated with Sega or
@@ -101,6 +114,10 @@ authority.
 ==
 === Version History
 ==
+
+v1.3m_SL:
+
+- Retargeted for client version 6.1202.4
 
 v1.3l:
 

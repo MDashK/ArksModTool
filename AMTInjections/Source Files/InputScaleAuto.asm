@@ -14,7 +14,7 @@ bind2					DWORD		b2+4
 .CODE
 
 InputScaleAuto:
-	mov ecx, esi
+	mov ecx, edi
 	mov dword ptr[esp], 3F800000
 	movss xmm3, dword ptr [esp]
 b0:	mulss xmm3, dword ptr ds:[NO_ADDRESS]

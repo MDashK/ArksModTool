@@ -257,9 +257,9 @@
             // 
             this.lblVersion.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
             this.lblVersion.Font = new System.Drawing.Font("Consolas", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.lblVersion.Location = new System.Drawing.Point(318, 301);
+            this.lblVersion.Location = new System.Drawing.Point(290, 301);
             this.lblVersion.Name = "lblVersion";
-            this.lblVersion.Size = new System.Drawing.Size(39, 20);
+            this.lblVersion.Size = new System.Drawing.Size(67, 20);
             this.lblVersion.TabIndex = 5;
             this.lblVersion.Text = "v0.0";
             this.lblVersion.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
@@ -1773,7 +1773,7 @@
             this.btnInfoMenu.Name = "btnInfoMenu";
             this.btnInfoMenu.Size = new System.Drawing.Size(75, 17);
             this.btnInfoMenu.TabIndex = 1;
-            this.btnInfoMenu.Text = "&v";
+            this.btnInfoMenu.Text = "&GitHub";
             this.btnInfoMenu.UseVisualStyleBackColor = true;
             this.btnInfoMenu.Click += new System.EventHandler(this.btnInfoMenu_Click);
             // 

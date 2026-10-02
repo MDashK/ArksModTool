@@ -103,11 +103,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="SharpDX">
-      <HintPath>..\..\..\..\..\..\..\..\Program Files (x86)\SharpDX SDK\Bin\DirectX11-net40\SharpDX.dll</HintPath>
+      <HintPath>Resources\Libraries\SharpDX.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="SharpDX.DirectInput">
-      <HintPath>..\..\..\..\..\..\..\..\Program Files (x86)\SharpDX SDK\Bin\Standard-net40\SharpDX.DirectInput.dll</HintPath>
+      <HintPath>Resources\Libraries\SharpDX.DirectInput.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System" />
@@ -282,9 +282,15 @@
     <Timestamp>$([System.DateTime]::UtcNow.ToString("R"))</Timestamp>
   </PropertyGroup>
   <PropertyGroup>
-    <PreBuildEvent>mkdir "$(SolutionDir)Build\Release\AMTPatchFiles\" 2&gt; NUL
-xcopy "$(SolutionDir)Build\Release\AMTPatchFiles\*" "$(ProjectDir)Resources\Patch Files" /y /d
-echo $(Timestamp) &gt; "$(ProjectDir)time.txt</PreBuildEvent>
+    <PreBuildEvent>rem O AMTInjections so' tem a configuracao Release|Win32 e a solucao
+rem mapeia TODAS as suas configuracoes para ela, por isso o $(Configuration)
+rem dele vale sempre Release enquanto aqui vale Debug ou Release. Para os dois
+rem lados nao poderem divergir, o gerador escreve e isto le' da mesma pasta
+rem sem configuracao nenhuma no caminho.
+if not exist "$(SolutionDir)Build\AMTPatchFiles\CommMain.dat" echo PreBuild: no patch files in Build\AMTPatchFiles - build AMTInjections first.
+if not exist "$(SolutionDir)Build\AMTPatchFiles\CommMain.dat" exit /b 1
+xcopy "$(SolutionDir)Build\AMTPatchFiles\*" "$(ProjectDir)Resources\Patch Files" /y
+echo $(Timestamp) &gt; "$(ProjectDir)time.txt"</PreBuildEvent>
   </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

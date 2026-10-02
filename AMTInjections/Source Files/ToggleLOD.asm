@@ -14,7 +14,7 @@ bind1				DWORD		b1+1
 .CODE
 
 ToggleLOD:
-	movss xmm0, [esi+000000CC]
+	movss xmm0, [esi+000000D0]
 b0:	test byte ptr ds:[NO_ADDRESS], FLAG1_DISABLE_LOD_REDUCTION
 	je d0
 	pxor xmm0, xmm0

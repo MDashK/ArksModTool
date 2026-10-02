@@ -112,8 +112,8 @@ namespace ArksModTool
         private bool m_closeToTray = false;
 
         private string m_updateServer = Updater.DEFAULT_SERVER_BUILD;
-        private bool m_automaticUpdates = true;
-        private bool m_promptOnUpdate = true;
+        private bool m_automaticUpdates = false;
+        private bool m_promptOnUpdate = false;
 
         // No Save
         private bool m_walkEnabled = false;
@@ -169,8 +169,8 @@ namespace ArksModTool
             m_closeToTray = false;
 
             m_updateServer = Updater.DEFAULT_SERVER_BUILD;
-            m_automaticUpdates = true;
-            m_promptOnUpdate = true;
+            m_automaticUpdates = false;
+            m_promptOnUpdate = false;
         }
 
         public bool Save(string path)

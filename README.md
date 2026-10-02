@@ -1,4 +1,14 @@
-# Arks Mod Tool
+# Arks Mod Tool - Version 1.3m_SL
+
+-----
+
+MDashK: Retargeted to version v6.1202.4 for usage with the Starlight release.
+
+Functionality not yet retargeted for this client version, so disabled: screen notifications, emergency codes, camera overrides.
+
+This retargeted version is AI assisted.
+
+-----
 
 A mod utility tool to provide various client-side game adjustments for Phantasy Star Online 2.
 

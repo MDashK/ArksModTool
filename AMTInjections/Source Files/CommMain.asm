@@ -14,7 +14,7 @@ bind2				DWORD		b2+1
 .CODE
 
 CommMain:
-	mov ecx, ebx
+	mov ecx, esi
 	push eax
 	movss dword ptr [esp], xmm1
 	pushad
